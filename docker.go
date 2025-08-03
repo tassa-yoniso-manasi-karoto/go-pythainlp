@@ -5,6 +5,7 @@ import (
 	"embed"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"sync"
 	"strings"
@@ -20,7 +21,6 @@ const (
 	remote               = "https://github.com/PyThaiNLP/pythainlp.git"
 	defaultProjectName   = "pythainlp"
 	defaultContainerName = "pythainlp-pythainlp-1"
-	defaultServicePort   = 8000
 	healthCheckPath      = "/health"
 	serviceCheckInterval = 500 * time.Millisecond
 	maxServiceWaitTime   = 60 * time.Second
@@ -58,6 +58,7 @@ type PyThaiNLPManager struct {
 	projectName   string
 	containerName string
 	serviceURL    string
+	servicePort   int
 	QueryTimeout  time.Duration
 	serviceReady  bool
 	mu            sync.RWMutex
@@ -104,6 +105,19 @@ func NewManager(ctx context.Context, opts ...ManagerOption) (*PyThaiNLPManager, 
 		opt(manager)
 	}
 
+	// Allocate a free port
+	listener, err := net.Listen("tcp", ":0")
+	if err != nil {
+		return nil, fmt.Errorf("failed to allocate port: %w", err)
+	}
+	manager.servicePort = listener.Addr().(*net.TCPAddr).Port
+	listener.Close() // Release the port for later use
+
+	Logger.Info().Int("port", manager.servicePort).Msg("Allocated port for PyThaiNLP service")
+
+	// Add port to context for dockerutil
+	ctx = context.WithValue(ctx, dockerutil.ServicePortKey, manager.servicePort)
+
 	// Configure logging
 	logConfig := dockerutil.LogConfig{
 		Prefix:      manager.projectName,
@@ -139,7 +153,7 @@ func NewManager(ctx context.Context, opts ...ManagerOption) (*PyThaiNLPManager, 
 
 	manager.docker = dockerManager
 	manager.logger = logger
-	manager.serviceURL = fmt.Sprintf("http://localhost:%d", defaultServicePort)
+	manager.serviceURL = fmt.Sprintf("http://localhost:%d", manager.servicePort)
 
 	// Create HTTP client
 	manager.client = NewClient(manager.serviceURL, manager.QueryTimeout)
@@ -263,6 +277,15 @@ func (pm *PyThaiNLPManager) copyServiceFiles(ctx context.Context, dockerClient *
 		return fmt.Errorf("failed to read server.py: %w", err)
 	}
 
+	// Replace port placeholder with actual port
+	portStr := fmt.Sprintf("%d", pm.servicePort)
+	modifiedContent := strings.ReplaceAll(string(content), "__PYTHAINLP_SERVICE_PORT__", portStr)
+	
+	// Verify replacement occurred
+	if strings.Contains(modifiedContent, "__PYTHAINLP_SERVICE_PORT__") {
+		return fmt.Errorf("failed to replace port placeholder in server.py")
+	}
+
 	// Create service directory in container
 	mkdirCmd := []string{"mkdir", "-p", "/workspace/service"}
 	if _, err := pm.execCommand(ctx, dockerClient, mkdirCmd); err != nil {
@@ -272,7 +295,7 @@ func (pm *PyThaiNLPManager) copyServiceFiles(ctx context.Context, dockerClient *
 	// Write server.py to container
 	// Using a heredoc approach to write the file
 	writeCmd := []string{
-		fmt.Sprintf("cat > /workspace/service/server.py << 'EOF'\n%s\nEOF", string(content)),
+		fmt.Sprintf("cat > /workspace/service/server.py << 'EOF'\n%s\nEOF", modifiedContent),
 	}
 	if _, err := pm.execCommand(ctx, dockerClient, writeCmd); err != nil {
 		return fmt.Errorf("failed to write server.py: %w", err)

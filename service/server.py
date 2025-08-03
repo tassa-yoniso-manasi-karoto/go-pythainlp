@@ -306,5 +306,5 @@ def create_app() -> web.Application:
 
 if __name__ == '__main__':
     app = create_app()
-    print("Starting PyThaiNLP HTTP service on port 8000...", file=sys.stderr)
-    web.run_app(app, host='0.0.0.0', port=8000)
+    print("Starting PyThaiNLP HTTP service on port __PYTHAINLP_SERVICE_PORT__...", file=sys.stderr)
+    web.run_app(app, host='0.0.0.0', port=__PYTHAINLP_SERVICE_PORT__)
