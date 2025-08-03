@@ -160,4 +160,4 @@ The persistent service architecture provides:
 
 ## License
 
-Apache 2.0
+GPL 3
