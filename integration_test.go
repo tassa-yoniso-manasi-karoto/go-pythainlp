@@ -31,6 +31,7 @@ func TestIntegration(t *testing.T) {
 
 	// Initialize
 	t.Log("Initializing PyThaiNLP container...")
+	t.Logf("Lightweight mode: %v", manager.IsLightweightMode())
 	if err := manager.Init(ctx); err != nil {
 		t.Fatalf("Failed to initialize: %v", err)
 	}

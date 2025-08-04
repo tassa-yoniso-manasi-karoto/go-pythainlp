@@ -31,10 +31,70 @@ except Exception as e:
     print(f"Failed to load PyThaiNLP: {e}", file=sys.stderr)
     sys.exit(1)
 
-# Available engines
-TOKENIZE_ENGINES = ["newmm", "longest", "icu", "attacut", "deepcut", "nercut", "nlpo3", "oskut", "sefr_cut", "tltk"]
-ROMANIZE_ENGINES = ["royin", "thai2rom", "tltk", "lookup"]
-TRANSLITERATE_ENGINES = ["thaig2p", "icu", "ipa", "tltk_g2p", "iso_11940", "tltk_ipa"]
+# Dynamically detect available engines
+def detect_available_engines():
+    """Detect which engines are actually available based on installed dependencies"""
+    tokenize_engines = []
+    romanize_engines = []
+    transliterate_engines = []
+    
+    # Always available tokenizers (dictionary-based)
+    tokenize_engines.extend(["newmm", "longest", "icu", "nercut", "tltk"])
+    
+    # Check for nlpo3 (Rust-based)
+    try:
+        import nlpo3
+        tokenize_engines.append("nlpo3")
+    except ImportError:
+        pass
+    
+    # Check for neural tokenizers (require torch)
+    try:
+        import torch
+        tokenize_engines.extend(["attacut", "deepcut", "oskut", "sefr_cut"])
+    except ImportError:
+        print("PyTorch not available - neural tokenizers disabled", file=sys.stderr)
+    
+    # Romanization engines
+    romanize_engines.extend(["royin", "tltk", "lookup"])  # Always available
+    
+    # Check for thai2rom (requires torch)
+    try:
+        import torch
+        romanize_engines.append("thai2rom")
+    except ImportError:
+        pass
+    
+    # Check for thai2rom_onnx
+    try:
+        import onnxruntime
+        romanize_engines.append("thai2rom_onnx")
+    except ImportError:
+        pass
+    
+    # Transliteration engines
+    transliterate_engines.extend(["icu", "iso_11940", "tltk_ipa", "tltk_g2p"])  # Always available
+    
+    # Check for thaig2p and ipa (require torch/epitran)
+    try:
+        import torch
+        transliterate_engines.extend(["thaig2p", "thaig2p_v2"])
+    except ImportError:
+        pass
+    
+    try:
+        import epitran
+        transliterate_engines.append("ipa")
+    except ImportError:
+        pass
+    
+    return tokenize_engines, romanize_engines, transliterate_engines
+
+# Detect available engines at startup
+TOKENIZE_ENGINES, ROMANIZE_ENGINES, TRANSLITERATE_ENGINES = detect_available_engines()
+print(f"Available tokenizers: {TOKENIZE_ENGINES}", file=sys.stderr)
+print(f"Available romanizers: {ROMANIZE_ENGINES}", file=sys.stderr)
+print(f"Available transliterators: {TRANSLITERATE_ENGINES}", file=sys.stderr)
 
 
 async def handle_tokenize(request: web.Request) -> web.Response:

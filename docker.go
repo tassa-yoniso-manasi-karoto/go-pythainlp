@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"path/filepath"
 	"sync"
 	"strings"
 	"time"
@@ -31,9 +32,20 @@ var (
 	//go:embed service/*
 	serviceFiles embed.FS
 
+	// Embed requirements files
+	//go:embed docker_light_requirements.txt
+	lightRequirements []byte
+
+	//go:embed docker_full_requirements.txt
+	fullRequirements []byte
+
 	// Default settings
 	DefaultQueryTimeout   = 30 * time.Second
 	DefaultDockerLogLevel = zerolog.TraceLevel
+	
+	// UseLightweightMode controls whether to use minimal dependencies (default: true)
+	// Set to false before Init() if you need full PyThaiNLP capabilities
+	UseLightweightMode = true
 	
 	// Logger for this package
 	Logger = zerolog.Nop()
@@ -52,16 +64,17 @@ func EnableDebugLogging() {
 
 // PyThaiNLPManager handles Docker lifecycle and service management for PyThaiNLP
 type PyThaiNLPManager struct {
-	docker        *dockerutil.DockerManager
-	logger        *dockerutil.ContainerLogConsumer
-	client        *Client
-	projectName   string
-	containerName string
-	serviceURL    string
-	servicePort   int
-	QueryTimeout  time.Duration
-	serviceReady  bool
-	mu            sync.RWMutex
+	docker          *dockerutil.DockerManager
+	logger          *dockerutil.ContainerLogConsumer
+	client          *Client
+	projectName     string
+	containerName   string
+	serviceURL      string
+	servicePort     int
+	QueryTimeout    time.Duration
+	serviceReady    bool
+	lightweightMode bool
+	mu              sync.RWMutex
 }
 
 // ManagerOption defines function signature for options to configure PyThaiNLPManager
@@ -89,15 +102,23 @@ func WithContainerName(name string) ManagerOption {
 	}
 }
 
+// WithLightweightMode sets whether to use lightweight mode (minimal dependencies)
+func WithLightweightMode(lightweight bool) ManagerOption {
+	return func(pm *PyThaiNLPManager) {
+		pm.lightweightMode = lightweight
+	}
+}
+
 // NewManager creates a new PyThaiNLP manager instance
 func NewManager(ctx context.Context, opts ...ManagerOption) (*PyThaiNLPManager, error) {
 	// Enable Docker logging to stdout
 	dockerutil.SetLogOutput(dockerutil.LogToStdout)
 	
 	manager := &PyThaiNLPManager{
-		projectName:   defaultProjectName,
-		containerName: defaultContainerName,
-		QueryTimeout:  DefaultQueryTimeout,
+		projectName:     defaultProjectName,
+		containerName:   defaultContainerName,
+		QueryTimeout:    DefaultQueryTimeout,
+		lightweightMode: UseLightweightMode,
 	}
 
 	// Apply options
@@ -163,6 +184,11 @@ func NewManager(ctx context.Context, opts ...ManagerOption) (*PyThaiNLPManager, 
 
 // Init initializes the docker service and starts the Python server
 func (pm *PyThaiNLPManager) Init(ctx context.Context) error {
+	// Copy requirements file before docker build
+	if err := pm.copyRequirementsFile(); err != nil {
+		return fmt.Errorf("failed to copy requirements file: %w", err)
+	}
+
 	if err := pm.docker.Init(); err != nil {
 		return fmt.Errorf("failed to initialize docker: %w", err)
 	}
@@ -177,6 +203,11 @@ func (pm *PyThaiNLPManager) Init(ctx context.Context) error {
 
 // InitRecreate removes existing containers then builds and starts new ones
 func (pm *PyThaiNLPManager) InitRecreate(ctx context.Context, noCache bool) error {
+	// Copy requirements file before docker build
+	if err := pm.copyRequirementsFile(); err != nil {
+		return fmt.Errorf("failed to copy requirements file: %w", err)
+	}
+
 	if noCache {
 		if err := pm.docker.InitRecreateNoCache(); err != nil {
 			return err
@@ -192,6 +223,39 @@ func (pm *PyThaiNLPManager) InitRecreate(ctx context.Context, noCache bool) erro
 		return fmt.Errorf("failed to start Python service: %w", err)
 	}
 
+	return nil
+}
+
+// copyRequirementsFile copies the appropriate requirements file based on lightweight mode
+func (pm *PyThaiNLPManager) copyRequirementsFile() error {
+	// Get the directory where dockerutil will look for files
+	configDir, err := dockerutil.GetConfigDir(pm.projectName)
+	if err != nil {
+		return fmt.Errorf("failed to get config directory: %w", err)
+	}
+
+	// Ensure the directory exists
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		return fmt.Errorf("failed to create config directory: %w", err)
+	}
+
+	// Select the appropriate requirements file
+	var requirements []byte
+	if pm.lightweightMode {
+		Logger.Info().Msg("Using lightweight requirements (no neural networks)")
+		requirements = lightRequirements
+	} else {
+		Logger.Info().Msg("Using full requirements (includes neural networks)")
+		requirements = fullRequirements
+	}
+
+	// Write as docker_requirements.txt
+	targetPath := filepath.Join(configDir, "docker_requirements.txt")
+	if err := os.WriteFile(targetPath, requirements, 0644); err != nil {
+		return fmt.Errorf("failed to write requirements file: %w", err)
+	}
+
+	Logger.Debug().Str("path", targetPath).Bool("lightweight", pm.lightweightMode).Msg("Requirements file written")
 	return nil
 }
 
@@ -389,6 +453,13 @@ func (pm *PyThaiNLPManager) IsReady() bool {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
 	return pm.serviceReady
+}
+
+// IsLightweightMode returns whether the manager is using lightweight mode
+func (pm *PyThaiNLPManager) IsLightweightMode() bool {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+	return pm.lightweightMode
 }
 
 // Stop stops the docker service

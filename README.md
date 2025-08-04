@@ -1,14 +1,40 @@
 # go-pythainlp
 
-Go bindings for PyThaiNLP using Docker containers and HTTP API.
+Basic Go bindings for PyThaiNLP using Docker containers and HTTP API.
 
 ## Features
 
-- **Tokenization** - Word segmentation with multiple engines (newmm, attacut, deepcut, etc.)
-- **Romanization** - Convert Thai text to Latin alphabet (royin, thai2rom, etc.)
-- **Transliteration** - Phonetic conversion (IPA, thaig2p, etc.)
+- **Tokenization** - Word segmentation with multiple engines
+- **Romanization** - Convert Thai text to Latin alphabet
+- **Transliteration** - Phonetic conversion (IPA, tltk, etc.)
 - **High Performance** - Persistent Python service eliminates startup overhead
 - **Docker-based** - No Python installation required on host
+- **Lightweight Mode** - By default use a ~170MB image without obsolete ML tokenizers or BERT sentiment (96% size reduction)
+
+<!-- CLAUDE:
+Romanization engines that need PyTorch:
+- thai2rom - Deep learning based (requires PyTorch)
+- thaig2p - IPA transliteration (requires PyTorch)
+
+Romanization engines that DON'T need PyTorch:
+- royin (default) - Rule-based, Royal Institute standard
+- tltk - Rule-based Thai Language Toolkit
+- lookup - Dictionary-based
+- thai2rom_onnx - Uses ONNX runtime instead of PyTorch
+
+Other PyTorch users (all unrelated to your needs):
+- attacut/deepcut - Tokenizers you don't want
+- wangchanberta - BERT models for various NLP tasks
+- chat/generate modules - Text generation
+- spell checking, parsing, etc.
+
+For tokenization, the best engines don't need PyTorch:
+- newmm - Dictionary-based (your preferred choice)
+- longest - Dictionary-based
+- nlpo3 - Rust-based
+- icu - ICU library based
+
+-->
 
 ## Installation
 
@@ -53,6 +79,37 @@ func main() {
     fmt.Printf("Romanized: %s\n", roman.Text)
     // Output: Romanized: phasa thai
 }
+```
+
+## Lightweight Mode
+
+> [!IMPORTANT]
+> **go-pythainlp defaults to lightweight mode** to optimize the end-user experience. This mode downloads only 170MB (vs 3.9GB) and builds in ~4 minutes, while still providing the best-performing tokenization engine (`newmm` with F1 score of 0.802, outperforming neural engines at 0.775). Perfect for applications like subtitle processing where users need quality results without lengthy installation times.
+
+By default, go-pythainlp uses lightweight mode which excludes neural network dependencies, reducing the Docker image size from ~3.9GB to ~170MB. This mode includes the best-performing dictionary-based engines like `newmm` and `nlpo3`.
+
+### Available in Lightweight Mode:
+- **Tokenizers**: newmm, longest, icu, nercut, tltk, nlpo3
+- **Romanizers**: royin, tltk, lookup
+- **Transliterators**: icu, iso_11940, tltk_ipa, tltk_g2p
+
+### Excluded in Lightweight Mode:
+- **Tokenizers**: attacut, deepcut, oskut, sefr_cut (neural networks)
+- **Romanizers**: thai2rom (requires PyTorch)
+- **Transliterators**: thaig2p, ipa (require PyTorch/epitran)
+
+### Using Full Mode
+
+To use the full PyThaiNLP with all neural network models:
+
+```go
+// Option 1: Set package variable before Init
+pythainlp.UseLightweightMode = false
+pythainlp.Init()
+
+// Option 2: Use manager with option
+manager, err := pythainlp.NewManager(ctx,
+    pythainlp.WithLightweightMode(false))
 ```
 
 ## Advanced Usage
