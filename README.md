@@ -1,6 +1,6 @@
-# go-pythainlp
+### Status: alpha [![Go Reference](https://pkg.go.dev/badge/github.com/tassa-yoniso-manasi-karoto/go-pythainlp.svg)](https://pkg.go.dev/github.com/tassa-yoniso-manasi-karoto/go-pythainlp)
 
-Go bindings for basic features of PyThaiNLP using Docker Compose.
+Go bindings for **basic features of PyThaiNLP through Docker Compose**.
 
 ## Features
 
@@ -45,15 +45,6 @@ go get github.com/tassa-yoniso-manasi-karoto/go-pythainlp
 ## Quick Start
 
 ```go
-package main
-
-import (
-    "fmt"
-    "log"
-    
-    pythainlp "github.com/tassa-yoniso-manasi-karoto/go-pythainlp"
-)
-
 func main() {
     // Initialize with default settings
     if err := pythainlp.Init(); err != nil {
@@ -87,12 +78,12 @@ func main() {
 > **go-pythainlp defaults to lightweight mode** to optimize the end-user experience. <br> This mode downloads only 170MB (vs 3.9GB) and builds in ~4 minutes, while still providing the best-performing tokenization engine (`newmm` with F1 score of 0.802, outperforming old LSTM-based tokenizers at 0.775 and only beaten by SOTA LLMs). [Benchmark here](https://github.com/tassa-yoniso-manasi-karoto/pythainlp/blob/7abc6e312028101474a208d3967ef7fcf935ef27/quick_bench/results.txt#L1175) 
 
 ### Available in Lightweight Mode:
-- **Tokenizers**: newmm, longest, icu, nercut, tltk, nlpo3
+- **Tokenizers**: newmm, longest, nercut, tltk, nlpo3
 - **Romanizers**: royin, tltk, lookup
 - **Transliterators**: icu, iso_11940, tltk_ipa, tltk_g2p
 
 ### Excluded in Lightweight Mode:
-- **Tokenizers**: attacut, deepcut, oskut, sefr_cut (neural networks)
+- **Tokenizers**: attacut, deepcut, oskut, sefr_cut (neural networks), icu (long C++ compilation needed)
 - **Romanizers**: thai2rom (requires PyTorch)
 - **Transliterators**: thaig2p, ipa (require PyTorch/epitran)
 
