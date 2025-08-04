@@ -1,6 +1,6 @@
 # go-pythainlp
 
-Basic Go bindings for PyThaiNLP using Docker containers and HTTP API.
+Go bindings for basic features of PyThaiNLP using Docker Compose.
 
 ## Features
 
@@ -83,10 +83,8 @@ func main() {
 
 ## Lightweight Mode
 
-> [!IMPORTANT]
-> **go-pythainlp defaults to lightweight mode** to optimize the end-user experience. This mode downloads only 170MB (vs 3.9GB) and builds in ~4 minutes, while still providing the best-performing tokenization engine (`newmm` with F1 score of 0.802, outperforming neural engines at 0.775). Perfect for applications like subtitle processing where users need quality results without lengthy installation times.
-
-By default, go-pythainlp uses lightweight mode which excludes neural network dependencies, reducing the Docker image size from ~3.9GB to ~170MB. This mode includes the best-performing dictionary-based engines like `newmm` and `nlpo3`.
+> [!WARNING]
+> **go-pythainlp defaults to lightweight mode** to optimize the end-user experience. <br> This mode downloads only 170MB (vs 3.9GB) and builds in ~4 minutes, while still providing the best-performing tokenization engine (`newmm` with F1 score of 0.802, outperforming old LSTM-based tokenizers at 0.775 and only beaten by SOTA LLMs). [Benchmark here](https://github.com/tassa-yoniso-manasi-karoto/pythainlp/blob/7abc6e312028101474a208d3967ef7fcf935ef27/quick_bench/results.txt#L1175) 
 
 ### Available in Lightweight Mode:
 - **Tokenizers**: newmm, longest, icu, nercut, tltk, nlpo3
