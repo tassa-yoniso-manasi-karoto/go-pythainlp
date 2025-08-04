@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	remote               = "https://github.com/PyThaiNLP/pythainlp.git"
+	remote               = "https://github.com/tassa-yoniso-manasi-karoto/pythainlp.git"
 	defaultProjectName   = "pythainlp"
 	defaultContainerName = "pythainlp-pythainlp-1"
 	healthCheckPath      = "/health"
