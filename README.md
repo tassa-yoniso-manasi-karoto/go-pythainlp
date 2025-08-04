@@ -80,12 +80,12 @@ func main() {
 ### Available in Lightweight Mode:
 - **Tokenizers**: newmm, longest, nercut, tltk, nlpo3
 - **Romanizers**: royin, tltk, lookup
-- **Transliterators**: icu, iso_11940, tltk_ipa, tltk_g2p
+- **Transliterators**: iso_11940, tltk_ipa, tltk_g2p
 
 ### Excluded in Lightweight Mode:
 - **Tokenizers**: attacut, deepcut, oskut, sefr_cut (neural networks), icu (long C++ compilation needed)
 - **Romanizers**: thai2rom (requires PyTorch)
-- **Transliterators**: thaig2p, ipa (require PyTorch/epitran)
+- **Transliterators**: thaig2p, ipa (require PyTorch/epitran), icu
 
 ### Using Full Mode
 
@@ -199,7 +199,7 @@ pythainlp.Init()
 ## Performance
 
 The persistent service architecture provides:
-- Sub-millisecond latency for simple operations
+- Millisecond latency for simple operations
 - One-time initialization cost (10-30 seconds)
 - Handles 1000+ requests/second
 - Shared model instances reduce memory usage

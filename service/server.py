@@ -39,7 +39,14 @@ def detect_available_engines():
     transliterate_engines = []
     
     # Always available tokenizers (dictionary-based)
-    tokenize_engines.extend(["newmm", "longest", "icu", "nercut", "tltk"])
+    tokenize_engines.extend(["newmm", "longest", "nercut", "tltk"])
+    
+    # Check for ICU (requires pyicu)
+    try:
+        import icu
+        tokenize_engines.append("icu")
+    except ImportError:
+        pass
     
     # Check for nlpo3 (Rust-based)
     try:
@@ -73,7 +80,14 @@ def detect_available_engines():
         pass
     
     # Transliteration engines
-    transliterate_engines.extend(["icu", "iso_11940", "tltk_ipa", "tltk_g2p"])  # Always available
+    transliterate_engines.extend(["iso_11940", "tltk_ipa", "tltk_g2p"])  # Always available
+    
+    # Check for ICU transliteration (requires pyicu)
+    try:
+        import icu
+        transliterate_engines.append("icu")
+    except ImportError:
+        pass
     
     # Check for thaig2p and ipa (require torch/epitran)
     try:
