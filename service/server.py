@@ -18,7 +18,7 @@ print("Loading PyThaiNLP modules...", file=sys.stderr)
 start_time = time.time()
 
 try:
-    from pythainlp.tokenize import word_tokenize
+    from pythainlp.tokenize import word_tokenize, syllable_tokenize
     from pythainlp.transliterate import romanize, transliterate, pronunciate
     from pythainlp import __version__ as pythainlp_version
     
@@ -37,6 +37,7 @@ def detect_available_engines():
     tokenize_engines = []
     romanize_engines = []
     transliterate_engines = []
+    syllable_engines = []
     
     # Always available tokenizers (dictionary-based)
     tokenize_engines.extend(["newmm", "longest", "nercut", "tltk"])
@@ -102,13 +103,24 @@ def detect_available_engines():
     except ImportError:
         pass
     
-    return tokenize_engines, romanize_engines, transliterate_engines
+    # Syllable engines - most are always available in lightweight mode
+    syllable_engines.extend(["dict", "han_solo", "ssg"])  # CRF-based, use python-crfsuite
+    
+    # Check for tltk syllable engine
+    try:
+        import tltk
+        syllable_engines.append("tltk")
+    except ImportError:
+        pass
+    
+    return tokenize_engines, romanize_engines, transliterate_engines, syllable_engines
 
 # Detect available engines at startup
-TOKENIZE_ENGINES, ROMANIZE_ENGINES, TRANSLITERATE_ENGINES = detect_available_engines()
+TOKENIZE_ENGINES, ROMANIZE_ENGINES, TRANSLITERATE_ENGINES, SYLLABLE_ENGINES = detect_available_engines()
 print(f"Available tokenizers: {TOKENIZE_ENGINES}", file=sys.stderr)
 print(f"Available romanizers: {ROMANIZE_ENGINES}", file=sys.stderr)
 print(f"Available transliterators: {TRANSLITERATE_ENGINES}", file=sys.stderr)
+print(f"Available syllable engines: {SYLLABLE_ENGINES}", file=sys.stderr)
 
 
 async def handle_tokenize(request: web.Request) -> web.Response:
@@ -292,6 +304,63 @@ async def handle_transliterate(request: web.Request) -> web.Response:
         }, status=500)
 
 
+async def handle_syllable_tokenize(request: web.Request) -> web.Response:
+    """Handle syllable tokenization requests"""
+    try:
+        data = await request.json()
+        text = data.get("text", "")
+        engine = data.get("engine", "han_solo")  # Default engine
+        keep_whitespace = data.get("keep_whitespace", True)
+        
+        if not text:
+            return web.json_response({
+                "data": None,
+                "metadata": {},
+                "error": {
+                    "code": "EMPTY_TEXT",
+                    "message": "Text parameter is required"
+                }
+            }, status=400)
+        
+        if engine not in SYLLABLE_ENGINES:
+            return web.json_response({
+                "data": None,
+                "metadata": {},
+                "error": {
+                    "code": "INVALID_ENGINE",
+                    "message": f"Engine '{engine}' not supported",
+                    "details": {"supported_engines": SYLLABLE_ENGINES}
+                }
+            }, status=400)
+        
+        start = time.time()
+        syllables = syllable_tokenize(text, engine=engine, keep_whitespace=keep_whitespace)
+        processing_time = (time.time() - start) * 1000
+        
+        return web.json_response({
+            "data": {
+                "syllables": syllables
+            },
+            "metadata": {
+                "engine": engine,
+                "version": pythainlp_version,
+                "processing_time_ms": round(processing_time, 2)
+            },
+            "error": None
+        })
+        
+    except Exception as e:
+        return web.json_response({
+            "data": None,
+            "metadata": {},
+            "error": {
+                "code": "INTERNAL_ERROR",
+                "message": str(e),
+                "details": {"traceback": traceback.format_exc()}
+            }
+        }, status=500)
+
+
 async def handle_analyze(request: web.Request) -> web.Response:
     """Handle combined analysis requests"""
     try:
@@ -327,6 +396,10 @@ async def handle_analyze(request: web.Request) -> web.Response:
             engine = data.get("transliterate_engine", "thaig2p")
             result["phonetic"] = transliterate(text, engine=engine)
         
+        if "syllable" in features:
+            engine = data.get("syllable_engine", "han_solo")
+            result["syllables"] = syllable_tokenize(text, engine=engine)
+        
         processing_time = (time.time() - start) * 1000
         
         return web.json_response({
@@ -359,7 +432,8 @@ async def handle_health(request: web.Request) -> web.Response:
         "engines": {
             "tokenize": TOKENIZE_ENGINES,
             "romanize": ROMANIZE_ENGINES,
-            "transliterate": TRANSLITERATE_ENGINES
+            "transliterate": TRANSLITERATE_ENGINES,
+            "syllable": SYLLABLE_ENGINES
         }
     })
 
@@ -372,6 +446,7 @@ def create_app() -> web.Application:
     app.router.add_post('/tokenize', handle_tokenize)
     app.router.add_post('/romanize', handle_romanize)
     app.router.add_post('/transliterate', handle_transliterate)
+    app.router.add_post('/syllable_tokenize', handle_syllable_tokenize)
     app.router.add_post('/analyze', handle_analyze)
     app.router.add_get('/health', handle_health)
     

@@ -183,6 +183,26 @@ func (c *Client) Transliterate(ctx context.Context, req *TransliterateRequest) (
 	}, nil
 }
 
+// SyllableTokenize performs syllable tokenization
+func (c *Client) SyllableTokenize(ctx context.Context, req *SyllableTokenizeRequest) (*SyllableTokenizeResponse, error) {
+	resp, err := c.doRequest(ctx, http.MethodPost, "/syllable_tokenize", req)
+	if err != nil {
+		return nil, err
+	}
+
+	var data struct {
+		Syllables []string `json:"syllables"`
+	}
+	if err := json.Unmarshal(resp.Data, &data); err != nil {
+		return nil, fmt.Errorf("failed to parse syllable tokenize response: %w", err)
+	}
+
+	return &SyllableTokenizeResponse{
+		Syllables: data.Syllables,
+		Metadata:  resp.Metadata,
+	}, nil
+}
+
 // Analyze performs combined analysis
 func (c *Client) Analyze(ctx context.Context, req *AnalyzeRequest) (*AnalyzeResponse, error) {
 	resp, err := c.doRequest(ctx, http.MethodPost, "/analyze", req)
@@ -223,6 +243,13 @@ type TransliterateRequest struct {
 	Engine string `json:"engine,omitempty"`
 }
 
+// SyllableTokenizeRequest represents a syllable tokenization request
+type SyllableTokenizeRequest struct {
+	Text           string `json:"text"`
+	Engine         string `json:"engine,omitempty"`
+	KeepWhitespace bool   `json:"keep_whitespace,omitempty"`
+}
+
 // AnalyzeRequest represents a combined analysis request
 type AnalyzeRequest struct {
 	Text                string   `json:"text"`
@@ -230,6 +257,7 @@ type AnalyzeRequest struct {
 	TokenizeEngine      string   `json:"tokenize_engine,omitempty"`
 	RomanizeEngine      string   `json:"romanize_engine,omitempty"`
 	TransliterateEngine string   `json:"transliterate_engine,omitempty"`
+	SyllableEngine      string   `json:"syllable_engine,omitempty"`
 }
 
 // Response types
@@ -261,12 +289,19 @@ type TransliterateResponse struct {
 	Metadata map[string]interface{} `json:"metadata"`
 }
 
+// SyllableTokenizeResponse represents a syllable tokenization response
+type SyllableTokenizeResponse struct {
+	Syllables []string               `json:"syllables"`
+	Metadata  map[string]interface{} `json:"metadata"`
+}
+
 // AnalyzeData contains the results of combined analysis
 type AnalyzeData struct {
 	Tokens          []string `json:"tokens,omitempty"`
 	Romanized       string   `json:"romanized,omitempty"`
 	RomanizedTokens []string `json:"romanized_tokens,omitempty"`
 	Phonetic        string   `json:"phonetic,omitempty"`
+	Syllables       []string `json:"syllables,omitempty"`
 }
 
 // AnalyzeResponse represents a combined analysis response

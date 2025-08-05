@@ -26,6 +26,7 @@ func (pm *PyThaiNLPManager) AnalyzeWithOptions(ctx context.Context, text string,
 		TokenizeEngine:      opts.TokenizeEngine,
 		RomanizeEngine:      opts.RomanizeEngine,
 		TransliterateEngine: opts.TransliterateEngine,
+		SyllableEngine:      opts.SyllableEngine,
 	}
 
 	// Set default features if not specified
@@ -51,6 +52,7 @@ func (pm *PyThaiNLPManager) AnalyzeWithOptions(ctx context.Context, text string,
 		Romanized:      resp.Data.Romanized,
 		RomanizedParts: resp.Data.RomanizedTokens,
 		Phonetic:       resp.Data.Phonetic,
+		Syllables:      resp.Data.Syllables,
 		Features:       req.Features,
 		ProcessingTime: processingTime,
 	}

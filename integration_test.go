@@ -113,6 +113,34 @@ func TestIntegration(t *testing.T) {
 		}
 	})
 
+	t.Run("SyllableTokenize", func(t *testing.T) {
+		result, err := manager.SyllableTokenize(ctx, testText)
+		if err != nil {
+			t.Fatalf("SyllableTokenize failed: %v", err)
+		}
+
+		t.Logf("Syllables: %v", result.Syllables)
+		t.Logf("Engine: %s, Processing time: %.2fms", result.Engine, result.ProcessingTime)
+
+		if len(result.Syllables) == 0 {
+			t.Error("Expected syllables, got none")
+		}
+	})
+
+	t.Run("SyllableTokenizeWithEngine", func(t *testing.T) {
+		engines := []string{pythainlp.EngineSyllableHanSolo, pythainlp.EngineSyllableDict, pythainlp.EngineSyllableTLTK}
+		
+		for _, engine := range engines {
+			result, err := manager.SyllableTokenizeWithEngine(ctx, "สวัสดี", engine)
+			if err != nil {
+				t.Logf("Engine %s not available: %v", engine, err)
+				continue
+			}
+
+			t.Logf("Engine %s: %v", engine, result.Syllables)
+		}
+	})
+
 	t.Run("AnalyzeText", func(t *testing.T) {
 		result, err := manager.AnalyzeText(ctx, testText)
 		if err != nil {
@@ -129,6 +157,27 @@ func TestIntegration(t *testing.T) {
 				t.Logf("  [%d] Surface: %s, Romanized: %s, IsLexical: %v",
 					i, token.Surface, token.Romanization, token.IsLexical)
 			}
+		}
+	})
+
+	t.Run("AnalyzeWithSyllables", func(t *testing.T) {
+		opts := pythainlp.AnalyzeOptions{
+			Features:       []string{"tokenize", "romanize", "syllable"},
+			SyllableEngine: pythainlp.EngineSyllableHanSolo,
+		}
+
+		result, err := manager.AnalyzeWithOptions(ctx, "สวัสดี", opts)
+		if err != nil {
+			t.Fatalf("AnalyzeWithOptions failed: %v", err)
+		}
+
+		t.Logf("Raw tokens: %v", result.RawTokens)
+		t.Logf("Romanized: %s", result.Romanized)
+		t.Logf("Syllables: %v", result.Syllables)
+		t.Logf("Processing time: %.2fms", result.ProcessingTime)
+
+		if len(result.Syllables) == 0 {
+			t.Error("Expected syllables in combined analysis")
 		}
 	})
 
@@ -184,6 +233,15 @@ func TestPackageLevelFunctions(t *testing.T) {
 		}
 
 		t.Logf("Romanized: %s", result.Text)
+	})
+
+	t.Run("PackageSyllableTokenize", func(t *testing.T) {
+		result, err := pythainlp.SyllableTokenize(testText)
+		if err != nil {
+			t.Fatalf("SyllableTokenize failed: %v", err)
+		}
+
+		t.Logf("Syllables: %v", result.Syllables)
 	})
 
 	t.Run("PackageAnalyze", func(t *testing.T) {

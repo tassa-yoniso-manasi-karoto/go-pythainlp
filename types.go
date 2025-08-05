@@ -46,6 +46,15 @@ type TransliterateResult struct {
 	ProcessingTime float64 `json:"processing_time_ms"`
 }
 
+// SyllableTokenizeResult contains the results of syllable tokenization
+type SyllableTokenizeResult struct {
+	Syllables []string // Syllable segments
+	
+	// Metadata
+	Engine         string  `json:"engine"`
+	ProcessingTime float64 `json:"processing_time_ms"`
+}
+
 // AnalyzeResult contains combined analysis results
 type AnalyzeResult struct {
 	Tokens         []Token  // Structured tokens
@@ -53,6 +62,7 @@ type AnalyzeResult struct {
 	Romanized      string   // Full romanized text
 	RomanizedParts []string // Per-token romanization
 	Phonetic       string   // IPA representation
+	Syllables      []string // Syllable segments
 	
 	// Metadata
 	Features       []string `json:"features"`
@@ -92,6 +102,14 @@ const (
 	EngineThaig2pV2 = "thaig2p_v2" // Version 2 of thaig2p
 )
 
+// Engine constants for syllable tokenization
+const (
+	EngineSyllableDict    = "dict"     // Dictionary-based syllable tokenization
+	EngineSyllableHanSolo = "han_solo" // Default, CRF syllable segmenter for social media
+	EngineSyllableSSG     = "ssg"      // CRF syllable segmenter
+	EngineSyllableTLTK    = "tltk"     // Thai Language Toolkit syllable tokenizer
+)
+
 // Options for various operations
 type TokenizeOptions struct {
 	Engine         string                 // Tokenization engine to use
@@ -111,11 +129,17 @@ type TransliterateOptions struct {
 	Engine string // Transliteration engine to use
 }
 
+type SyllableTokenizeOptions struct {
+	Engine         string // Syllable tokenization engine to use
+	KeepWhitespace bool   // Whether to keep whitespace tokens
+}
+
 type AnalyzeOptions struct {
-	Features            []string // Features to extract: tokenize, romanize, transliterate
+	Features            []string // Features to extract: tokenize, romanize, transliterate, syllable
 	TokenizeEngine      string   // Engine for tokenization
 	RomanizeEngine      string   // Engine for romanization
 	TransliterateEngine string   // Engine for transliteration
+	SyllableEngine      string   // Engine for syllable tokenization
 }
 
 // Error types
