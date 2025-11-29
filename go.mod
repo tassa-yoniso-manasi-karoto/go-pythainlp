@@ -5,7 +5,7 @@ go 1.23.11
 require (
 	github.com/docker/docker v27.5.0+incompatible
 	github.com/rs/zerolog v1.33.0
-	github.com/tassa-yoniso-manasi-karoto/dockerutil v0.0.0-20250803110715-1ae365840edf
+	github.com/tassa-yoniso-manasi-karoto/dockerutil v0.0.0-20251129132959-2a00a5e860e7
 )
 
 require (
@@ -209,5 +209,3 @@ require (
 	sigs.k8s.io/yaml v1.4.0 // indirect
 	tags.cncf.io/container-device-interface v0.8.0 // indirect
 )
-
-replace github.com/tassa-yoniso-manasi-karoto/dockerutil => ../dockerutil
