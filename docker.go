@@ -532,3 +532,27 @@ func Close() error {
 	}
 	return nil
 }
+
+// SetDefaultManager sets a custom manager as the package-level default instance.
+// This allows providers that create their own manager to share it with code
+// that uses package-level functions like SyllableTokenize().
+//
+// Use case: When a provider (e.g., translitkit's PyThaiNLPProvider) creates its
+// own manager for lifecycle control, it can set that manager as the default so
+// other code using package-level functions will reuse the same container.
+func SetDefaultManager(mgr *PyThaiNLPManager) {
+	instanceMu.Lock()
+	defer instanceMu.Unlock()
+	instance = mgr
+	instanceClosed = false
+}
+
+// ClearDefaultManager clears the default manager reference.
+// Call this when the manager is being closed to prevent stale references.
+// This does NOT close the manager - the caller is responsible for that.
+func ClearDefaultManager() {
+	instanceMu.Lock()
+	defer instanceMu.Unlock()
+	instance = nil
+	instanceClosed = true
+}
