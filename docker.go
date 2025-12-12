@@ -24,7 +24,7 @@ const (
 	defaultContainerName = "pythainlp-pythainlp-1"
 	healthCheckPath      = "/health"
 	serviceCheckInterval = 500 * time.Millisecond
-	maxServiceWaitTime   = 60 * time.Second
+	maxServiceWaitTime   = 480 * time.Second // account for first run = build take ~4min on low end CPU, low speed network
 )
 
 var (
