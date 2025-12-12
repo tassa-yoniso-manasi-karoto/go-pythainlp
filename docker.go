@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/rs/zerolog"
 	"github.com/tassa-yoniso-manasi-karoto/dockerutil"
@@ -25,6 +25,9 @@ const (
 	healthCheckPath      = "/health"
 	serviceCheckInterval = 500 * time.Millisecond
 	maxServiceWaitTime   = 480 * time.Second // account for first run = build take ~4min on low end CPU, low speed network
+
+	// GHCR image for pre-built pythainlp container
+	ghcrImage = "ghcr.io/tassa-yoniso-manasi-karoto/langkit-pythainlp:latest"
 )
 
 var (
@@ -64,17 +67,18 @@ func EnableDebugLogging() {
 
 // PyThaiNLPManager handles Docker lifecycle and service management for PyThaiNLP
 type PyThaiNLPManager struct {
-	docker          *dockerutil.DockerManager
-	logger          *dockerutil.ContainerLogConsumer
-	client          *Client
-	projectName     string
-	containerName   string
-	serviceURL      string
-	servicePort     int
-	QueryTimeout    time.Duration
-	serviceReady    bool
-	lightweightMode bool
-	mu              sync.RWMutex
+	docker                   *dockerutil.DockerManager
+	logger                   *dockerutil.ContainerLogConsumer
+	client                   *Client
+	projectName              string
+	containerName            string
+	serviceURL               string
+	servicePort              int
+	QueryTimeout             time.Duration
+	serviceReady             bool
+	lightweightMode          bool
+	downloadProgressCallback func(current, total int64, status string)
+	mu                       sync.RWMutex
 }
 
 // ManagerOption defines function signature for options to configure PyThaiNLPManager
@@ -106,6 +110,13 @@ func WithContainerName(name string) ManagerOption {
 func WithLightweightMode(lightweight bool) ManagerOption {
 	return func(pm *PyThaiNLPManager) {
 		pm.lightweightMode = lightweight
+	}
+}
+
+// WithDownloadProgressCallback sets a callback for download progress during image pull
+func WithDownloadProgressCallback(cb func(current, total int64, status string)) ManagerOption {
+	return func(pm *PyThaiNLPManager) {
+		pm.downloadProgressCallback = cb
 	}
 }
 
@@ -182,8 +193,22 @@ func NewManager(ctx context.Context, opts ...ManagerOption) (*PyThaiNLPManager, 
 	return manager, nil
 }
 
+// PullImage pre-pulls the GHCR image with progress tracking
+func (pm *PyThaiNLPManager) PullImage(ctx context.Context) error {
+	opts := dockerutil.DefaultPullOptions()
+	if pm.downloadProgressCallback != nil {
+		opts.OnProgress = pm.downloadProgressCallback
+	}
+	return dockerutil.PullImage(ctx, ghcrImage, opts)
+}
+
 // Init initializes the docker service and starts the Python server
 func (pm *PyThaiNLPManager) Init(ctx context.Context) error {
+	// Pre-pull image with progress tracking
+	if err := pm.PullImage(ctx); err != nil {
+		return fmt.Errorf("failed to pull image: %w", err)
+	}
+
 	// Copy requirements file before docker build
 	if err := pm.copyRequirementsFile(); err != nil {
 		return fmt.Errorf("failed to copy requirements file: %w", err)
@@ -294,7 +319,7 @@ func (pm *PyThaiNLPManager) startService(ctx context.Context) error {
 		"exec python -u /workspace/service/server.py",
 	}
 
-	execConfig := types.ExecConfig{
+	execConfig := container.ExecOptions{
 		Cmd:          startCmd,
 		AttachStdout: false,
 		AttachStderr: false,
@@ -309,7 +334,7 @@ func (pm *PyThaiNLPManager) startService(ctx context.Context) error {
 	}
 
 	Logger.Debug().Msg("Starting Python service exec...")
-	if err := dockerClient.ContainerExecStart(ctx, exec.ID, types.ExecStartCheck{
+	if err := dockerClient.ContainerExecStart(ctx, exec.ID, container.ExecStartOptions{
 		Detach: true,
 		Tty:    false,
 	}); err != nil {
@@ -381,7 +406,7 @@ func (pm *PyThaiNLPManager) execCommand(ctx context.Context, dockerClient *clien
 	
 	Logger.Trace().Strs("command", bashCmd).Msg("Executing command")
 	
-	execConfig := types.ExecConfig{
+	execConfig := container.ExecOptions{
 		Cmd:          bashCmd,
 		AttachStdout: true,
 		AttachStderr: true,
@@ -394,7 +419,7 @@ func (pm *PyThaiNLPManager) execCommand(ctx context.Context, dockerClient *clien
 		return nil, err
 	}
 
-	resp, err := dockerClient.ContainerExecAttach(ctx, exec.ID, types.ExecStartCheck{})
+	resp, err := dockerClient.ContainerExecAttach(ctx, exec.ID, container.ExecStartOptions{})
 	if err != nil {
 		return nil, err
 	}
