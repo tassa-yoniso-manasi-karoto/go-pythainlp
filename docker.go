@@ -8,10 +8,12 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"sync"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/adrg/xdg"
+	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/rs/zerolog"
@@ -19,7 +21,6 @@ import (
 )
 
 const (
-	remote               = "https://github.com/tassa-yoniso-manasi-karoto/pythainlp.git"
 	defaultProjectName   = "pythainlp"
 	defaultContainerName = "pythainlp-pythainlp-1"
 	healthCheckPath      = "/health"
@@ -120,11 +121,45 @@ func WithDownloadProgressCallback(cb func(current, total int64, status string)) 
 	}
 }
 
+// ptr returns a pointer to the given string value
+func ptr(s string) *string {
+	return &s
+}
+
+// buildComposeProject creates the compose project definition for pythainlp
+func buildComposeProject(dataDir string, port int) *types.Project {
+	return &types.Project{
+		Name: defaultProjectName,
+		Services: types.Services{
+			"pythainlp": {
+				Name:       "pythainlp",
+				Image:      ghcrImage,
+				StdinOpen:  true,
+				Tty:        true,
+				WorkingDir: "/workspace",
+				Environment: types.MappingWithEquals{
+					"PYTHAINLP_DATA_DIR": ptr("/workspace/pythainlp-data"),
+				},
+				Volumes: []types.ServiceVolumeConfig{{
+					Type:   types.VolumeTypeBind,
+					Source: dataDir,
+					Target: "/workspace",
+				}},
+				Ports: []types.ServicePortConfig{{
+					Target:    uint32(port),
+					Published: fmt.Sprintf("%d", port),
+					Protocol:  "tcp",
+				}},
+			},
+		},
+	}
+}
+
 // NewManager creates a new PyThaiNLP manager instance
 func NewManager(ctx context.Context, opts ...ManagerOption) (*PyThaiNLPManager, error) {
 	// Enable Docker logging to stdout
 	dockerutil.SetLogOutput(dockerutil.LogToStdout)
-	
+
 	manager := &PyThaiNLPManager{
 		projectName:     defaultProjectName,
 		containerName:   defaultContainerName,
@@ -137,6 +172,12 @@ func NewManager(ctx context.Context, opts ...ManagerOption) (*PyThaiNLPManager, 
 		opt(manager)
 	}
 
+	// Get XDG data directory for pythainlp
+	dataDir := filepath.Join(xdg.ConfigHome, manager.projectName)
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create data directory: %w", err)
+	}
+
 	// Allocate a free port
 	listener, err := net.Listen("tcp", ":0")
 	if err != nil {
@@ -147,8 +188,8 @@ func NewManager(ctx context.Context, opts ...ManagerOption) (*PyThaiNLPManager, 
 
 	Logger.Info().Int("port", manager.servicePort).Msg("Allocated port for PyThaiNLP service")
 
-	// Add port to context for dockerutil
-	ctx = context.WithValue(ctx, dockerutil.ServicePortKey, manager.servicePort)
+	// Build compose project
+	project := buildComposeProject(dataDir, manager.servicePort)
 
 	// Configure logging
 	logConfig := dockerutil.LogConfig{
@@ -164,18 +205,15 @@ func NewManager(ctx context.Context, opts ...ManagerOption) (*PyThaiNLPManager, 
 	// Configure Docker manager
 	cfg := dockerutil.Config{
 		ProjectName:      manager.projectName,
-		ComposeFile:      "docker-compose.yml",
-		RemoteRepo:       remote,
+		Project:          project,
 		RequiredServices: []string{"pythainlp"},
 		LogConsumer:      logger,
 		Timeout: dockerutil.Timeout{
-			// Create:   200 * time.Second,
-			// Recreate: 25 * time.Minute,
-			// Start:    60 * time.Second,
 			Create:   30 * time.Minute,
 			Recreate: 60 * time.Minute,
 			Start:    30 * time.Minute,
 		},
+		OnPullProgress: manager.downloadProgressCallback,
 	}
 
 	dockerManager, err := dockerutil.NewDockerManager(ctx, cfg)
@@ -204,16 +242,6 @@ func (pm *PyThaiNLPManager) PullImage(ctx context.Context) error {
 
 // Init initializes the docker service and starts the Python server
 func (pm *PyThaiNLPManager) Init(ctx context.Context) error {
-	// Pre-pull image with progress tracking
-	if err := pm.PullImage(ctx); err != nil {
-		return fmt.Errorf("failed to pull image: %w", err)
-	}
-
-	// Copy requirements file before docker build
-	if err := pm.copyRequirementsFile(); err != nil {
-		return fmt.Errorf("failed to copy requirements file: %w", err)
-	}
-
 	if err := pm.docker.Init(); err != nil {
 		return fmt.Errorf("failed to initialize docker: %w", err)
 	}
@@ -228,11 +256,6 @@ func (pm *PyThaiNLPManager) Init(ctx context.Context) error {
 
 // InitRecreate removes existing containers then builds and starts new ones
 func (pm *PyThaiNLPManager) InitRecreate(ctx context.Context, noCache bool) error {
-	// Copy requirements file before docker build
-	if err := pm.copyRequirementsFile(); err != nil {
-		return fmt.Errorf("failed to copy requirements file: %w", err)
-	}
-
 	if noCache {
 		if err := pm.docker.InitRecreateNoCache(); err != nil {
 			return err

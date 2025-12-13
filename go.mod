@@ -5,7 +5,7 @@ go 1.23.12
 require (
 	github.com/docker/docker v28.4.0+incompatible
 	github.com/rs/zerolog v1.33.0
-	github.com/tassa-yoniso-manasi-karoto/dockerutil v0.0.0-20251212113125-91d844d045a4
+	github.com/tassa-yoniso-manasi-karoto/dockerutil v0.0.0-20251213064812-099d2ccb9e9b
 )
 
 require (
