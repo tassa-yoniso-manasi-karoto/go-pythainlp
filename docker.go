@@ -128,15 +128,25 @@ func ptr(s string) *string {
 
 // buildComposeProject creates the compose project definition for pythainlp
 func buildComposeProject(dataDir string, port int) *types.Project {
+	// Network name follows Docker Compose convention: {project}_{network}
+	defaultNetworkName := defaultProjectName + "_default"
+
 	return &types.Project{
 		Name: defaultProjectName,
+		// Default network required for port exposure
+		Networks: types.Networks{
+			"default": types.NetworkConfig{
+				Name: defaultNetworkName,
+			},
+		},
 		Services: types.Services{
 			"pythainlp": {
-				Name:       "pythainlp",
-				Image:      ghcrImage,
-				StdinOpen:  true,
-				Tty:        true,
-				WorkingDir: "/workspace",
+				Name:          "pythainlp",
+				ContainerName: defaultContainerName, // Explicit for exec commands
+				Image:         ghcrImage,
+				StdinOpen:     true,
+				Tty:           true,
+				WorkingDir:    "/workspace",
 				Environment: types.MappingWithEquals{
 					"PYTHAINLP_DATA_DIR": ptr("/workspace/pythainlp-data"),
 				},
@@ -149,7 +159,12 @@ func buildComposeProject(dataDir string, port int) *types.Project {
 					Target:    uint32(port),
 					Published: fmt.Sprintf("%d", port),
 					Protocol:  "tcp",
+					Mode:      "ingress",
 				}},
+				// Attach to default network
+				Networks: map[string]*types.ServiceNetworkConfig{
+					"default": nil,
+				},
 			},
 		},
 	}
