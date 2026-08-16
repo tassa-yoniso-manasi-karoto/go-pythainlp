@@ -7,7 +7,7 @@ require (
 	github.com/compose-spec/compose-go/v2 v2.10.1
 	github.com/docker/docker v28.5.2+incompatible
 	github.com/rs/zerolog v1.34.0
-	github.com/tassa-yoniso-manasi-karoto/dockerutil v0.0.0-20260816082843-7b61cea3e0a2
+	github.com/tassa-yoniso-manasi-karoto/dockerutil v0.0.0-20260816224127-f041ae4bfec7
 )
 
 require (

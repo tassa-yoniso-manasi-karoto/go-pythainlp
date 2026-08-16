@@ -132,6 +132,7 @@ func ptr(s string) *string {
 func buildComposeProject(projectName, containerName, dataDir string) *types.Project {
 	// Network name follows Docker Compose convention: {project}_{network}
 	defaultNetworkName := projectName + "_default"
+	stopGracePeriod := types.Duration(3 * time.Second)
 
 	return &types.Project{
 		Name: projectName,
@@ -143,12 +144,13 @@ func buildComposeProject(projectName, containerName, dataDir string) *types.Proj
 		},
 		Services: types.Services{
 			"pythainlp": {
-				Name:          "pythainlp",
-				ContainerName: containerName,
-				Image:         ghcrImage,
-				StdinOpen:     true,
-				Tty:           true,
-				WorkingDir:    "/workspace",
+				Name:            "pythainlp",
+				ContainerName:   containerName,
+				Image:           ghcrImage,
+				StdinOpen:       true,
+				Tty:             true,
+				WorkingDir:      "/workspace",
+				StopGracePeriod: &stopGracePeriod,
 				Environment: types.MappingWithEquals{
 					"PYTHAINLP_DATA_DIR": ptr("/pythainlp-data"),
 				},
