@@ -5,7 +5,6 @@ import (
 	"embed"
 	"fmt"
 	"io"
-	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,6 +22,7 @@ import (
 const (
 	defaultProjectName   = "pythainlp"
 	defaultContainerName = "pythainlp-pythainlp-1"
+	internalServicePort  = 8080
 	healthCheckPath      = "/health"
 	serviceCheckInterval = 500 * time.Millisecond
 	maxServiceWaitTime   = 480 * time.Second // account for first run = build take ~4min on low end CPU, low speed network
@@ -73,6 +73,7 @@ type PyThaiNLPManager struct {
 	client                   *Client
 	projectName              string
 	containerName            string
+	containerNameExplicit    bool
 	serviceURL               string
 	servicePort              int
 	QueryTimeout             time.Duration
@@ -104,6 +105,7 @@ func WithProjectName(name string) ManagerOption {
 func WithContainerName(name string) ManagerOption {
 	return func(pm *PyThaiNLPManager) {
 		pm.containerName = name
+		pm.containerNameExplicit = true
 	}
 }
 
@@ -127,12 +129,12 @@ func ptr(s string) *string {
 }
 
 // buildComposeProject creates the compose project definition for pythainlp
-func buildComposeProject(dataDir string, port int) *types.Project {
+func buildComposeProject(projectName, containerName, dataDir string) *types.Project {
 	// Network name follows Docker Compose convention: {project}_{network}
-	defaultNetworkName := defaultProjectName + "_default"
+	defaultNetworkName := projectName + "_default"
 
 	return &types.Project{
-		Name: defaultProjectName,
+		Name: projectName,
 		// Default network required for port exposure
 		Networks: types.Networks{
 			"default": types.NetworkConfig{
@@ -142,22 +144,22 @@ func buildComposeProject(dataDir string, port int) *types.Project {
 		Services: types.Services{
 			"pythainlp": {
 				Name:          "pythainlp",
-				ContainerName: defaultContainerName, // Explicit for exec commands
+				ContainerName: containerName,
 				Image:         ghcrImage,
 				StdinOpen:     true,
 				Tty:           true,
 				WorkingDir:    "/workspace",
 				Environment: types.MappingWithEquals{
-					"PYTHAINLP_DATA_DIR": ptr("/workspace/pythainlp-data"),
+					"PYTHAINLP_DATA_DIR": ptr("/pythainlp-data"),
 				},
 				Volumes: []types.ServiceVolumeConfig{{
 					Type:   types.VolumeTypeBind,
 					Source: dataDir,
-					Target: "/workspace",
+					Target: "/pythainlp-data",
 				}},
 				Ports: []types.ServicePortConfig{{
-					Target:    uint32(port),
-					Published: fmt.Sprintf("%d", port),
+					Target:    internalServicePort,
+					Published: "0",
 					Protocol:  "tcp",
 					Mode:      "ingress",
 				}},
@@ -187,24 +189,37 @@ func NewManager(ctx context.Context, opts ...ManagerOption) (*PyThaiNLPManager, 
 		opt(manager)
 	}
 
-	// Get XDG data directory for pythainlp
-	dataDir := filepath.Join(xdg.ConfigHome, manager.projectName)
+	var projectLease *dockerutil.ProjectLease
+	managerReady := false
+	defer func() {
+		if projectLease != nil && !managerReady {
+			_ = projectLease.Release(ctx)
+		}
+	}()
+	if runtime := dockerutil.RuntimeFromContext(ctx); runtime != nil {
+		lease, err := runtime.AcquireProject(ctx, dockerutil.ProjectSpec{
+			BaseName:  manager.projectName,
+			Kind:      "pythainlp",
+			Lifecycle: dockerutil.LifecycleOwned,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("acquire PyThaiNLP project: %w", err)
+		}
+		projectLease = lease
+		manager.projectName = lease.Name()
+		if !manager.containerNameExplicit {
+			manager.containerName = ""
+		}
+	}
+
+	// PyThaiNLP data is a persistent cache, independent from project scratch.
+	dataDir := filepath.Join(xdg.ConfigHome, "pythainlp-data")
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create data directory: %w", err)
 	}
 
-	// Allocate a free port
-	listener, err := net.Listen("tcp", ":0")
-	if err != nil {
-		return nil, fmt.Errorf("failed to allocate port: %w", err)
-	}
-	manager.servicePort = listener.Addr().(*net.TCPAddr).Port
-	listener.Close() // Release the port for later use
-
-	Logger.Info().Int("port", manager.servicePort).Msg("Allocated port for PyThaiNLP service")
-
 	// Build compose project
-	project := buildComposeProject(dataDir, manager.servicePort)
+	project := buildComposeProject(manager.projectName, manager.containerName, dataDir)
 
 	// Configure logging
 	logConfig := dockerutil.LogConfig{
@@ -219,8 +234,8 @@ func NewManager(ctx context.Context, opts ...ManagerOption) (*PyThaiNLPManager, 
 
 	// Configure Docker manager
 	cfg := dockerutil.Config{
-		ProjectName:      manager.projectName,
 		Project:          project,
+		ProjectLease:     projectLease,
 		RequiredServices: []string{"pythainlp"},
 		LogConsumer:      logger,
 		Timeout: dockerutil.Timeout{
@@ -238,10 +253,7 @@ func NewManager(ctx context.Context, opts ...ManagerOption) (*PyThaiNLPManager, 
 
 	manager.docker = dockerManager
 	manager.logger = logger
-	manager.serviceURL = fmt.Sprintf("http://localhost:%d", manager.servicePort)
-
-	// Create HTTP client
-	manager.client = NewClient(manager.serviceURL, manager.QueryTimeout)
+	managerReady = true
 
 	return manager, nil
 }
@@ -259,6 +271,9 @@ func (pm *PyThaiNLPManager) PullImage(ctx context.Context) error {
 func (pm *PyThaiNLPManager) Init(ctx context.Context) error {
 	if err := pm.docker.Init(); err != nil {
 		return fmt.Errorf("failed to initialize docker: %w", err)
+	}
+	if err := pm.resolveServiceEndpoint(ctx); err != nil {
+		return err
 	}
 
 	// Start the Python service
@@ -280,12 +295,32 @@ func (pm *PyThaiNLPManager) InitRecreate(ctx context.Context, noCache bool) erro
 			return err
 		}
 	}
+	if err := pm.resolveServiceEndpoint(ctx); err != nil {
+		return err
+	}
 
 	// Start the Python service
 	if err := pm.startService(ctx); err != nil {
 		return fmt.Errorf("failed to start Python service: %w", err)
 	}
 
+	return nil
+}
+
+func (pm *PyThaiNLPManager) resolveServiceEndpoint(ctx context.Context) error {
+	containerID, err := pm.docker.ContainerID(ctx, "pythainlp")
+	if err != nil {
+		return fmt.Errorf("resolve PyThaiNLP container: %w", err)
+	}
+	_, port, err := pm.docker.PublishedPort(ctx, "pythainlp", internalServicePort)
+	if err != nil {
+		return fmt.Errorf("resolve PyThaiNLP service port: %w", err)
+	}
+	pm.containerName = containerID
+	pm.servicePort = port
+	pm.serviceURL = fmt.Sprintf("http://localhost:%d", port)
+	pm.client = NewClient(pm.serviceURL, pm.QueryTimeout)
+	Logger.Info().Int("port", port).Msg("Resolved PyThaiNLP service port")
 	return nil
 }
 
@@ -405,7 +440,7 @@ func (pm *PyThaiNLPManager) copyServiceFiles(ctx context.Context, dockerClient *
 	}
 
 	// Replace port placeholder with actual port
-	portStr := fmt.Sprintf("%d", pm.servicePort)
+	portStr := fmt.Sprintf("%d", internalServicePort)
 	modifiedContent := strings.ReplaceAll(string(content), "__PYTHAINLP_SERVICE_PORT__", portStr)
 	
 	// Verify replacement occurred
@@ -531,17 +566,22 @@ func (pm *PyThaiNLPManager) Stop(ctx context.Context) error {
 	pm.serviceReady = false
 	pm.mu.Unlock()
 	
-	return pm.docker.Stop()
+	return pm.docker.StopWithContext(ctx)
 }
 
 // Close implements io.Closer
 func (pm *PyThaiNLPManager) Close() error {
+	return pm.CloseWithContext(context.Background())
+}
+
+// CloseWithContext releases the manager's Docker ownership with a context.
+func (pm *PyThaiNLPManager) CloseWithContext(ctx context.Context) error {
 	pm.mu.Lock()
 	pm.serviceReady = false
 	pm.mu.Unlock()
 	
 	pm.logger.Close()
-	return pm.docker.Close()
+	return pm.docker.CloseWithContext(ctx)
 }
 
 // Package-level functions for backward compatibility

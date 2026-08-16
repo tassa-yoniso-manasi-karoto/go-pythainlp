@@ -7,7 +7,7 @@ require (
 	github.com/compose-spec/compose-go/v2 v2.10.1
 	github.com/docker/docker v28.5.2+incompatible
 	github.com/rs/zerolog v1.34.0
-	github.com/tassa-yoniso-manasi-karoto/dockerutil v0.0.0-20260312023325-2253830d6704
+	github.com/tassa-yoniso-manasi-karoto/dockerutil v0.0.0-20260816082843-7b61cea3e0a2
 )
 
 require (
@@ -58,7 +58,6 @@ require (
 	github.com/gookit/color v1.6.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.28.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
-	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/hashicorp/go-version v1.8.0 // indirect
 	github.com/in-toto/attestation v1.1.2 // indirect
